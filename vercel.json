@@ -1,18 +1,16 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/crm",
-      "dest": "https://elankav-core.vercel.app/api/crm"
+      "source": "/api/crm",
+      "destination": "https://elankav-core.vercel.app/api/crm"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/:path((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
