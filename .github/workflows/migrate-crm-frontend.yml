@@ -1,0 +1,139 @@
+name: Migrate CRM frontend
+
+on:
+  push:
+    paths:
+      - .github/workflows/migrate-crm-frontend.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout validated CRM source
+        uses: actions/checkout@v4
+        with:
+          repository: elansuministros-oss/elankav-core
+          ref: release/CRM-FRONTEND-STANDALONE
+          path: upstream
+
+      - name: Build standalone frontend tree
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git checkout -B feature/CRM-001-STANDALONE-MIGRATION
+
+          rm -rf src public
+          mkdir -p src
+          cp -R upstream/src/. src/
+
+          if [ -d upstream/public ]; then
+            mkdir -p public
+            cp -R upstream/public/. public/
+          fi
+
+          cp upstream/index.html ./index.html
+          cp upstream/package.json ./package.json
+
+          if [ -f upstream/package-lock.json ]; then
+            cp upstream/package-lock.json ./package-lock.json
+          fi
+
+          for file in vite.config.js vite.config.mjs vite.config.ts eslint.config.js eslint.config.mjs; do
+            if [ -f "upstream/$file" ]; then
+              cp "upstream/$file" "./$file"
+            fi
+          done
+
+          rm -rf api lib server functions upstream
+
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.name = 'elankav-crm';
+          pkg.private = true;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+          cat > vercel.json <<'JSON'
+          {
+            "framework": "vite",
+            "buildCommand": "npm run build",
+            "outputDirectory": "dist",
+            "rewrites": [
+              {
+                "source": "/api/auth",
+                "destination": "https://elankav-core.vercel.app/api/auth"
+              },
+              {
+                "source": "/api/crm",
+                "destination": "https://elankav-core.vercel.app/api/crm"
+              },
+              {
+                "source": "/(.*)",
+                "destination": "/index.html"
+              }
+            ]
+          }
+          JSON
+
+          cat > .gitignore <<'EOF'
+          node_modules/
+          dist/
+          .vercel/
+          .env
+          .env.*
+          !.env.example
+          *.log
+          EOF
+
+          cat > README.md <<'EOF'
+          # ELANKAV CRM
+
+          Frontend independiente del CRM profesional del ecosistema ELANKAV.
+
+          ## Arquitectura
+
+          ```text
+          ELANKAV CRM (Vite + React)
+                  ↓
+          Vercel rewrites
+                  ↓
+          ELANKAV Core estable
+          ```
+
+          Este repositorio no contiene `api/`, backend propio ni funciones Serverless.
+
+          Endpoints consumidos:
+
+          - `https://elankav-core.vercel.app/api/auth`
+          - `https://elankav-core.vercel.app/api/crm`
+
+          ## Protección
+
+          - No modificar producción sin validar Preview.
+          - No modificar Supabase desde este repositorio.
+          - No duplicar servicios de ELANKAV Core.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No migration changes detected."
+            exit 0
+          fi
+
+          git commit -m "CRM-001: migrar frontend profesional independiente"
+          git push --force --set-upstream origin feature/CRM-001-STANDALONE-MIGRATION
