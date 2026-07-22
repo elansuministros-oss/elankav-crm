@@ -10,10 +10,16 @@ export default async function handler(req, res) {
   const adminPass = String(process.env.KAVTORE_ADMIN_PASS || '').trim();
   const token = String(process.env.KAVTORE_SESSION_TOKEN || '').trim();
 
-  if (!adminUser || !adminPass || !token) {
+  const missing = [];
+  if (!adminUser) missing.push('KAVTORE_ADMIN_USER');
+  if (!adminPass) missing.push('KAVTORE_ADMIN_PASS');
+  if (!token) missing.push('KAVTORE_SESSION_TOKEN');
+
+  if (missing.length > 0) {
     return res.status(500).json({
       ok: false,
-      error: 'Variables de login no configuradas en Vercel.'
+      error: `Configuración incompleta en este deployment: ${missing.join(', ')}`,
+      missing
     });
   }
 
